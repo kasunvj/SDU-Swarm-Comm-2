@@ -17,6 +17,136 @@ https://github.com/user-attachments/assets/8fa709bf-40f9-468f-92c2-c4446aa8c231
 
 ---
 
+# XBee 3 DigiMesh — Communication Protocol Reference
+
+## Overview
+
+The XB3-24DMST-J uses **DigiMesh** as its networking protocol, built on top of the **IEEE 802.15.4** physical radio standard. Understanding these two layers explains how your nodes find each other, route messages, and recover from failures automatically.
+
+---
+
+## Physical Layer — IEEE 802.15.4
+
+At the radio level the module uses the **IEEE 802.15.4** standard, which defines:
+
+- 2.4 GHz ISM frequency band (2.400 – 2.484 GHz)
+- 250 kbps raw over-the-air data rate
+- **DSSS** (Direct Sequence Spread Spectrum) — spreads the signal across a wider frequency band to reduce interference and improve noise rejection
+- **CSMA-CA** (Carrier Sense Multiple Access with Collision Avoidance) — before transmitting, the radio listens to check if the channel is free. If busy, it waits a random back-off period before retrying
+
+---
+
+## Networking Layer — DigiMesh
+
+DigiMesh is Digi's proprietary peer-to-peer mesh protocol built on top of IEEE 802.15.4.
+
+### Key Characteristics
+
+**Peer-to-peer**
+Every node is equal. There is no coordinator, no router, no end-device hierarchy. Any node can originate, receive, and relay messages. This is the fundamental difference from ZigBee, which requires a dedicated coordinator node.
+
+**Self-healing**
+If a node goes offline, the mesh automatically reroutes traffic through other available nodes. Routes are discovered dynamically — no manual configuration needed.
+
+**Broadcast flooding**
+A broadcast message is re-transmitted by every node that receives it until it reaches the whole network. The `ATBH` parameter controls the maximum number of hops.
+
+**Unicast with ACK**
+Point-to-point messages are acknowledged. If no ACK is received the module retries automatically before reporting a failure.
+
+**Synchronized sleeping**
+DigiMesh supports synchronized sleep across the entire mesh — all nodes sleep and wake together. This preserves the mesh topology during low-power periods, something ZigBee cannot do without a coordinator.
+
+---
+
+## Protocol Comparison
+
+| Property | DigiMesh | ZigBee | LoRa / LoRaWAN | WiFi |
+|---|---|---|---|---|
+| Topology | Peer-to-peer mesh | Star / mesh with coordinator | Star (gateway-based) | Star (AP-based) |
+| Coordinator required | No | Yes | Yes (gateway) | Yes (AP) |
+| Frequency | 2.4 GHz | 2.4 GHz | 868 / 915 MHz | 2.4 / 5 GHz |
+| Outdoor range | ~1500 m | ~100 m | ~5–15 km | ~100 m |
+| Raw data rate | 250 kbps | 250 kbps | 0.3–50 kbps | 10–600 Mbps |
+| Power consumption | Low | Low | Very low | High |
+| Self-healing mesh | Yes | Partial | No | No |
+| Sleeping mesh | Yes | No | N/A | No |
+
+---
+
+## Communication Modes
+
+### Transparent Mode (`ATAP 0`)
+
+Raw bytes written to the UART are transmitted directly over RF. Bytes arriving over RF come straight out the UART. No frame parsing required. Simple but provides no sender address or delivery status in the received data.
+
+**Your current configuration uses transparent mode.**
+
+### API Mode (`ATAP 1`)
+
+Data is wrapped in structured frames that include source address, RSSI, delivery status, and ACK feedback. Required when you need to identify which node sent a message. Used with the `digi-xbee` Python library.
+
+---
+
+## Protocol Stack
+
+```
+Application layer    comm.py  (tx_*.txt / rx_*.txt files)
+        │
+Serial layer         UART  /dev/ttyUSB*  at 9600 bps
+        │
+XBee firmware        AT command interface  (transparent mode, ATAP 0)
+        │
+DigiMesh             Peer-to-peer mesh routing, broadcast flooding, ACK
+        │
+IEEE 802.15.4        DSSS radio, CSMA-CA, 250 kbps, 2.4 GHz
+        │
+Physical             U.FL antenna → 2.4 GHz RF
+```
+
+In transparent mode your application only interacts with the serial layer. DigiMesh and IEEE 802.15.4 are completely hidden — when you write bytes to the UART they come out the antenna, and bytes arriving at the antenna come out the UART. Everything in between is handled automatically by the module firmware.
+
+---
+
+## Broadcast vs Unicast
+
+| Mode | Description | Address | ACK |
+|---|---|---|---|
+| Broadcast | Message delivered to all nodes on the same PAN ID and channel | `ATDL FFFF` | No |
+| Unicast | Message delivered to one specific node, with retry on failure | `ATDL` = target `ATSL` | Yes |
+
+In transparent mode with `ATDL FFFF`, every transmission is a broadcast received by all nodes simultaneously.
+
+---
+
+## RF Collision Behaviour
+
+In transparent mode all nodes share the same RF channel. If two nodes transmit at the same instant:
+
+- **CSMA-CA** detects the collision and schedules a retry after a random back-off
+- In a 3-node mesh with low traffic this is rare
+- As node count or transmission frequency increases, collisions become more likely
+
+To avoid collisions in a dense swarm, stagger transmissions using time slots (TDMA) — assign each node a fixed offset within a repeating cycle:
+
+```
+Cycle: 1000 ms
+  DRONE_1 transmits at   0 ms
+  DRONE_2 transmits at 333 ms
+  DRONE_3 transmits at 666 ms
+```
+
+This guarantees no two nodes transmit simultaneously without requiring API mode or a hardware scheduler.
+
+---
+
+## Further Reading
+
+- [Digi DigiMesh Networking Guide](https://www.digi.com/resources/documentation/digidocs/pdfs/90000991.pdf)
+- [IEEE 802.15.4 Standard Overview](https://standards.ieee.org/ieee/802.15.4/7029/)
+- [XBee 3 User Guide](https://www.digi.com/resources/documentation/digidocs/90002002/)
+---
+
 ## AT Command Parameters
 
 ### Network Identity
