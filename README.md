@@ -4,6 +4,17 @@
 
 The XB3-24DMST-J is a 2.4 GHz DigiMesh module by Digi International. DigiMesh is a peer-to-peer mesh networking protocol where every node is equal — there is no coordinator, no router hierarchy. Any node can transmit, receive, and relay messages. All nodes that share the same PAN ID and channel form one network and can communicate with each other automatically.
 
+
+https://github.com/user-attachments/assets/8fa709bf-40f9-468f-92c2-c4446aa8c231
+
+- Connecting the XBee USB adapters to the Raspberry Pi
+- Verifying devices on `/dev/ttyUSB*`
+- Reading and verifying parameters with `read_device.py`
+- Starting `comm.py` on all three nodes
+- Sending a message and confirming it arrives on the other nodes
+- Checking `rx_*.txt` log files
+
+
 ---
 
 ## AT Command Parameters
@@ -190,20 +201,6 @@ guidevideo.mp4       Video walkthrough — setup, configuration, and running the
 README.md            This file
 ```
 
-### Video Guide
-
-
-
-https://github.com/user-attachments/assets/8fa709bf-40f9-468f-92c2-c4446aa8c231
-
-
-
-- Connecting the XBee USB adapters to the Raspberry Pi
-- Verifying devices on `/dev/ttyUSB*`
-- Reading and verifying parameters with `read_device.py`
-- Starting `comm.py` on all three nodes
-- Sending a message and confirming it arrives on the other nodes
-- Checking `rx_*.txt` log files
 
 ---
 
