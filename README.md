@@ -17,14 +17,6 @@ https://github.com/user-attachments/assets/8fa709bf-40f9-468f-92c2-c4446aa8c231
 
 ---
 
-# XBee 3 DigiMesh — Communication Protocol Reference
-
-## Overview
-
-The XB3-24DMST-J uses **DigiMesh** as its networking protocol, built on top of the **IEEE 802.15.4** physical radio standard. Understanding these two layers explains how your nodes find each other, route messages, and recover from failures automatically.
-
----
-
 ## Physical Layer — IEEE 802.15.4
 
 At the radio level the module uses the **IEEE 802.15.4** standard, which defines:
