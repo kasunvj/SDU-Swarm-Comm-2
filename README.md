@@ -192,9 +192,11 @@ README.md            This file
 
 ### Video Guide
 
-<video width="100%" controls>
-  <source src="./guidevideo.mp4" type="video/mp4">
-</video>
+
+
+https://github.com/user-attachments/assets/8fa709bf-40f9-468f-92c2-c4446aa8c231
+
+
 
 - Connecting the XBee USB adapters to the Raspberry Pi
 - Verifying devices on `/dev/ttyUSB*`
