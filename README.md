@@ -193,7 +193,7 @@ README.md            This file
 ### Video Guide
 
 <video width="100%" controls>
-  <source src="guidevideo.mp4" type="video/mp4">
+  <source src="./guidevideo.mp4" type="video/mp4">
 </video>
 
 - Connecting the XBee USB adapters to the Raspberry Pi
