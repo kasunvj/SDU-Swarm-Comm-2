@@ -474,9 +474,9 @@ tail -f SDU-Swarm-Comm-2/rx_d1.txt \
 **Step 3 — Trigger all three nodes to transmit at once** (fifth terminal):
 
 ```bash
-echo "1 tx msg" >> SDU-Swarm-Comm-2/tx_d1.txt && \
-echo "2 tx msg" >> SDU-Swarm-Comm-2/tx_d2.txt && \
-echo "3 tx msg" >> SDU-Swarm-Comm-2/tx_d3.txt
+echo "1 tx msg" >> tx_d1.txt && \
+echo "2 tx msg" >> tx_d2.txt && \
+echo "3 tx msg" >> tx_d3.txt
 ```
 
 **Expected result** — within 1–2 seconds each rx file should show messages from the other two nodes:
