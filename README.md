@@ -454,13 +454,13 @@ This test fires a message from all three nodes simultaneously and confirms every
 
 ```bash
 # Terminal 1
-python3 comm.py /dev/ttyUSB0 SDU-Swarm-Comm-2/rx_d1.txt SDU-Swarm-Comm-2/tx_d1.txt
+python3 comm.py /dev/ttyUSB0 rx_d1.txt tx_d1.txt
 
 # Terminal 2
-python3 comm.py /dev/ttyUSB1 SDU-Swarm-Comm-2/rx_d2.txt SDU-Swarm-Comm-2/tx_d2.txt
+python3 comm.py /dev/ttyUSB1 rx_d2.txt tx_d2.txt
 
 # Terminal 3
-python3 comm.py /dev/ttyUSB2 SDU-Swarm-Comm-2/rx_d3.txt SDU-Swarm-Comm-2/tx_d3.txt
+python3 comm.py /dev/ttyUSB2 rx_d3.txt tx_d3.txt
 ```
 
 **Step 2 — Watch all rx files in real time** (fourth terminal):
