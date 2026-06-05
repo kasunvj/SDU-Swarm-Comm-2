@@ -16,7 +16,7 @@ import threading
 from datetime import datetime
 
 BAUDRATE      = 9600
-POLL_INTERVAL = 0.5
+POLL_INTERVAL = 0.01 #seconds
 
 
 # ── Receiver thread ───────────────────────────────────────────────────────────
