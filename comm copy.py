@@ -44,27 +44,37 @@ def receiver(ser, rx_file):
 # ── Transmitter thread ────────────────────────────────────────────────────────
 
 def transmitter(ser, tx_file):
-    work_file = tx_file + ".sending"
     while True:
         try:
-            if not os.path.exists(tx_file) or os.path.getsize(tx_file) == 0:
+            with open(tx_file, 'r') as f:
+                lines = [l.strip() for l in f.readlines() if l.strip()]
+
+            if not lines:
                 time.sleep(POLL_INTERVAL)
                 continue
 
-            os.replace(tx_file, work_file)        # atomic claim — new writes go to a fresh tx_file
-            with open(work_file, 'r') as f:
-                lines = [l.strip() for l in f.readlines() if l.strip()]
-            os.remove(work_file)
-
+            all_sent = True
             for line in lines:
-                ser.write((line + '\n').encode())
-                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                print(f"  TX: [{timestamp}] {line}")
-                time.sleep(0.1)
-        except FileNotFoundError:
-            pass
+                try:
+                    ser.write((line + '\n').encode())
+                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    print(f"  TX: [{timestamp}] {line}")
+                    time.sleep(0.1)
+                except serial.SerialException as e:
+                    print(f"  ERROR (transmitter): {e}")
+                    all_sent = False
+                    break
+
+            if all_sent:
+                with open(tx_file, 'w') as f:
+                    f.write('')
+                print(f"  Send file cleared.\n")
+            else:
+                print(f"  TX error — send file NOT cleared, will retry.\n")
+
         except Exception as e:
             print(f"  ERROR (transmitter): {e}")
+
         time.sleep(POLL_INTERVAL)
 
 
