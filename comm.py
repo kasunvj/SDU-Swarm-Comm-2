@@ -28,7 +28,7 @@ def receiver(ser, rx_file):
             if not line:
                 continue
 
-            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
             entry = f"[{timestamp}] {line}"
 
             with open(rx_file, 'a') as f:
@@ -58,7 +58,7 @@ def transmitter(ser, tx_file):
 
             for line in lines:
                 ser.write((line + '\n').encode())
-                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
                 print(f"  TX: [{timestamp}] {line}")
                 time.sleep(0.1)
         except FileNotFoundError:
