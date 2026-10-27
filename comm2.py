@@ -5,24 +5,25 @@ Usage: python3 comm.py <port> <receive_file> <send_file>
   e.g: python3 comm.py /dev/ttyUSB0 receive.txt send.txt
 
 - Watches send.txt for lines of the form
-      id,px,py,pz,vx,vy,vz          (metres, m/s; id 0-99)
-  encodes each line into an 18-byte frame, transmits it, and clears the file.
+      id,px,py,pz,vx,vy,vz,yaw      (metres, m/s, degrees; id 0-99)
+  encodes each line into a 20-byte frame, transmits it, and clears the file.
 - Listens on the port, validates and decodes every frame, and appends it to
   receive.txt in the same text format:
-      [timestamp] id,px,py,pz,vx,vy,vz
+      [timestamp] id,px,py,pz,vx,vy,vz,yaw
 - If the USB device drops and re-enumerates under a different name
   (e.g. ttyUSB0 -> ttyUSB1), automatically finds it and reconnects.
 
-Frame on the wire (18 bytes):
+Frame on the wire (20 bytes):
 
     +------------------------------------------------+------+
-    |  COBS( payload[13] | seq[1] | crc16[2] )  17 B | 0x00 |
+    |  COBS( payload[15] | seq[1] | crc16[2] )  19 B | 0x00 |
     +------------------------------------------------+------+
 
-  payload (13 bytes, little-endian):
+  payload (15 bytes, little-endian):
     Byte   0      : id    uint8   (0-99)
     Bytes  1-6    : px,py,pz      int16   cm
     Bytes  7-12   : vx,vy,vz      int16   cm/s
+    Bytes  13-14  : yaw           int16   centidegrees, wrapped to [-180, 180)
   seq    : uint8, counter per drone id, wraps 255 -> 0
   crc16  : CRC-16/CCITT-FALSE over payload + seq, little-endian
   COBS   : Consistent Overhead Byte Stuffing. Removes every 0x00 from the
@@ -30,6 +31,7 @@ Frame on the wire (18 bytes):
   0x00   : frame delimiter
 
 Range: +/-327.67 m and +/-327.67 m/s, resolution 1 cm and 1 cm/s.
+Yaw:   any angle is accepted and wrapped to [-180, 180) deg, resolution 0.01 deg.
 
 Why this is reliable:
   - Framing never depends on timing or on the data: the receiver splits the
@@ -59,11 +61,12 @@ RECONNECT_WAIT = 0.5    # seconds between reconnect attempts
 TX_SPACING     = 0.1    # seconds between transmitted frames (send rate limit)
 
 
-# ── Payload encoding / decoding (13 bytes) ──────────────────────────────────
+# ── Payload encoding / decoding (15 bytes) ──────────────────────────────────
 
-PAYLOAD_FMT  = "<B6h"                          # 1 x uint8 + 6 x int16, no padding
-PAYLOAD_SIZE = struct.calcsize(PAYLOAD_FMT)    # 13 bytes
+PAYLOAD_FMT  = "<B7h"                          # 1 x uint8 + 7 x int16, no padding
+PAYLOAD_SIZE = struct.calcsize(PAYLOAD_FMT)    # 15 bytes
 SCALE        = 100                             # m -> cm, m/s -> cm/s
+YAW_SCALE    = 100                             # deg -> centidegrees
 INT16_MIN, INT16_MAX = -32768, 32767
 ID_MAX       = 99
 
@@ -74,34 +77,48 @@ def _to_int16(value):
     return max(INT16_MIN, min(INT16_MAX, raw))
 
 
-def encode(drone_id, pos, vel):
-    """(id, (px,py,pz) [m], (vx,vy,vz) [m/s]) -> 13-byte payload."""
+def _yaw_to_int16(yaw_deg):
+    """Wrap yaw to [-180, 180) deg and convert to centidegrees (-18000..17999).
+    Wrapping keeps the angle the same (e.g. 350 -> -10) and can never overflow."""
+    wrapped = (yaw_deg + 180.0) % 360.0 - 180.0
+    raw = int(round(wrapped * YAW_SCALE))
+    return -18000 if raw >= 18000 else raw     # rounding 179.999 -> 180.00 == -180.00
+
+
+def encode(drone_id, pos, vel, yaw):
+    """(id, (px,py,pz) [m], (vx,vy,vz) [m/s], yaw [deg]) -> 15-byte payload."""
     if not 0 <= drone_id <= ID_MAX:
         raise ValueError(f"drone_id must be 0-{ID_MAX}, got {drone_id}")
     if len(pos) != 3 or len(vel) != 3:
         raise ValueError("pos and vel must each have 3 elements")
+    if yaw != yaw or yaw in (float("inf"), float("-inf")):
+        raise ValueError(f"yaw must be a finite number, got {yaw}")
     return struct.pack(PAYLOAD_FMT, drone_id,
                        *(_to_int16(p) for p in pos),
-                       *(_to_int16(v) for v in vel))
+                       *(_to_int16(v) for v in vel),
+                       _yaw_to_int16(yaw))
 
 
 def decode(payload):
-    """13-byte payload -> (id, (px,py,pz) [m], (vx,vy,vz) [m/s])."""
+    """15-byte payload -> (id, (px,py,pz) [m], (vx,vy,vz) [m/s], yaw [deg])."""
     if len(payload) != PAYLOAD_SIZE:
         raise ValueError(f"payload must be {PAYLOAD_SIZE} bytes, got {len(payload)}")
     drone_id, *raw = struct.unpack(PAYLOAD_FMT, payload)
     if drone_id > ID_MAX:
         raise ValueError(f"invalid drone_id {drone_id}")
-    pos = tuple(r / SCALE for r in raw[:3])
-    vel = tuple(r / SCALE for r in raw[3:])
-    return drone_id, pos, vel
+    pos = tuple(r / SCALE for r in raw[0:3])
+    vel = tuple(r / SCALE for r in raw[3:6])
+    yaw = raw[6] / YAW_SCALE
+    if not -180.0 <= yaw < 180.0:
+        raise ValueError(f"invalid yaw {yaw}")
+    return drone_id, pos, vel, yaw
 
 
-# ── Framing: seq + CRC-16 + COBS + 0x00 delimiter (18 bytes) ────────────────
+# ── Framing: seq + CRC-16 + COBS + 0x00 delimiter (20 bytes) ────────────────
 
 DELIM      = 0x00
-INNER_SIZE = PAYLOAD_SIZE + 1 + 2              # payload + seq + crc = 16 bytes
-FRAME_SIZE = INNER_SIZE + 1 + 1                # + COBS overhead + delimiter = 18 bytes
+INNER_SIZE = PAYLOAD_SIZE + 1 + 2              # payload + seq + crc = 18 bytes
+FRAME_SIZE = INNER_SIZE + 1 + 1                # + COBS overhead + delimiter = 20 bytes
 
 
 def crc16(data):
@@ -147,7 +164,7 @@ def cobs_decode(data):
 
 
 def build_frame(payload, seq):
-    """13-byte payload + seq -> 18-byte frame ready to write to the serial port."""
+    """15-byte payload + seq -> 20-byte frame ready to write to the serial port."""
     inner = payload + bytes([seq & 0xFF])
     inner += struct.pack("<H", crc16(inner))
     return cobs_encode(inner) + bytes([DELIM])
@@ -168,7 +185,7 @@ def parse_frame(body):
 class FrameReader:
     """Accumulates raw serial bytes and yields complete frame bodies split at 0x00."""
 
-    MAX_BODY = FRAME_SIZE - 1      # 17 bytes; anything longer is garbage
+    MAX_BODY = FRAME_SIZE - 1      # 19 bytes; anything longer is garbage
 
     def __init__(self):
         self._buf = bytearray()
@@ -239,18 +256,19 @@ class SeqTracker:
 # ── Text formats for send.txt / receive.txt ─────────────────────────────────
 
 def parse_tx_line(line):
-    """'id,px,py,pz,vx,vy,vz' -> (id, pos, vel). Raises ValueError if malformed."""
+    """'id,px,py,pz,vx,vy,vz,yaw' -> (id, pos, vel, yaw). Raises ValueError if malformed."""
     parts = [p.strip() for p in line.split(',')]
-    if len(parts) != 7:
-        raise ValueError(f"expected 7 comma-separated values, got {len(parts)}")
+    if len(parts) != 8:
+        raise ValueError(f"expected 8 comma-separated values "
+                         f"(id,px,py,pz,vx,vy,vz,yaw), got {len(parts)}")
     drone_id = int(parts[0])
     vals = [float(p) for p in parts[1:]]
-    return drone_id, vals[:3], vals[3:]
+    return drone_id, vals[0:3], vals[3:6], vals[6]
 
 
-def format_state(drone_id, pos, vel):
-    """(id, pos, vel) -> 'id,px,py,pz,vx,vy,vz' with 1 cm (2 decimal) precision."""
-    return f"{drone_id:02d}," + ",".join(f"{v:.2f}" for v in (*pos, *vel))
+def format_state(drone_id, pos, vel, yaw):
+    """(id, pos, vel, yaw) -> 'id,px,py,pz,vx,vy,vz,yaw' with 2-decimal precision."""
+    return f"{drone_id:02d}," + ",".join(f"{v:.2f}" for v in (*pos, *vel, yaw))
 
 
 # ── Serial connection manager ──────────────────────────────────────────────
@@ -352,7 +370,7 @@ def receiver(mgr, rx_file):
             for body in bodies:
                 try:
                     payload, seq = parse_frame(body)
-                    drone_id, pos, vel = decode(payload)
+                    drone_id, pos, vel, yaw = decode(payload)
                 except ValueError as e:
                     print(f"  (dropped frame: {e}: {body.hex(' ')})")
                     continue
@@ -364,7 +382,7 @@ def receiver(mgr, rx_file):
                     continue
 
                 timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-                entry = f"[{timestamp}] {format_state(drone_id, pos, vel)}"
+                entry = f"[{timestamp}] {format_state(drone_id, pos, vel, yaw)}"
 
                 with open(rx_file, 'a') as f:
                     f.write(entry + '\n')
@@ -398,8 +416,8 @@ def transmitter(mgr, tx_file):
 
             for line in lines:
                 try:
-                    drone_id, pos, vel = parse_tx_line(line)
-                    payload = encode(drone_id, pos, vel)
+                    drone_id, pos, vel, yaw = parse_tx_line(line)
+                    payload = encode(drone_id, pos, vel, yaw)
                 except ValueError as e:
                     print(f"  (skipped bad send line {line!r}: {e})")
                     continue
@@ -456,7 +474,7 @@ def main():
     print(f"\n  Port pattern : {mgr.port_pattern}")
     print(f"  Receive      : {rx_file}")
     print(f"  Send         : {tx_file}")
-    print(f"  Frame        : {FRAME_SIZE} bytes  (line format: id,px,py,pz,vx,vy,vz)")
+    print(f"  Frame        : {FRAME_SIZE} bytes  (line format: id,px,py,pz,vx,vy,vz,yaw)")
     print(f"  Press Ctrl+C to stop\n")
 
     # Start threads
